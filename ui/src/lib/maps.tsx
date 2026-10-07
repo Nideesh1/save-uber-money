@@ -2,7 +2,7 @@
 import { Map as MLMap, setWorkerUrl } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { API, hourLabel as hl } from "./config";
 
 setWorkerUrl(workerUrl);
@@ -140,8 +140,8 @@ function mix(a: string, b: string, t: number) {
   const [x, y] = [hex(a), hex(b)];
   return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
-/** 0 = cheapest (green) .. 1 = priciest (red), through taxi yellow. */
-export const priceColor = (t: number) => (t < 0.5 ? mix("#3fcf8e", "#f7c600", t * 2) : mix("#f7c600", "#ff5a4e", (t - 0.5) * 2));
+/** 0 = cheapest (cyan accent) .. 1 = priciest (taxi yellow): the one cheap-to-pricey scale. */
+export const priceColor = (t: number) => mix(CYAN, TAXI, Math.max(0, Math.min(1, t)));
 
 /** Hour quotes for a route + day: props first, else GET /api/quote (ML only). 404 -> null + note. */
 function useQuotes(puIds: number[], doIds: number[], dow: number, given?: HourQuote[] | null, givenDow?: number | null) {
@@ -266,7 +266,7 @@ export function RouteMapView(p: { puIds: number[]; doIds: number[]; puLabel: str
             if (w < h * 1.1) bearing = -12; // portrait / narrow screens: keep north-up-ish
           }
           autoFit(m, (duration) => {
-            const scrub = box?.parentElement?.querySelector(".scrub")?.getBoundingClientRect().height ?? 0;
+            const scrub = 0;
             const pts = [...pf, ...df].flatMap((f) => rings(f.geometry));
             const cam = rotatedCamera(pts, bearing, box?.clientWidth ?? 800, box?.clientHeight ?? 440, { top: 48, bottom: 40 + scrub, left: 40, right: 40 }, 13);
             m.flyTo({ ...cam, zoom: cam.zoom - 0.2, pitch: 30, duration, essential: true });
@@ -296,33 +296,47 @@ export function RouteMapView(p: { puIds: number[]; doIds: number[]; puLabel: str
     m.setPaintProperty("trail", "line-color", mix(c, "#ffffff", 0.55));
   }, [ready, curT]);
 
-  const pillColor = curT == null ? TAXI : priceColor(curT);
   const pillText = cur ? `$${cur.mid.toFixed(2)}` : p.price;
 
   const proj = (q?: Pos) => (q && map.current ? map.current.project(q) : null);
   const at = (q?: Pos) => { const s = proj(q); return s ? { transform: `translate(${s.x}px, ${s.y}px)` } : { display: "none" }; };
 
+  const pick = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setHour(r.hour); setPlaying(false); } };
+  const fromX = (e: RPointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    pick(Math.floor(((e.clientX - box.left) / box.width) * rows.length));
+  };
+  const curIdx = rows.findIndex((r) => r.hour === cur?.hour);
+  const bestIdx = rows.findIndex((r) => r.hour === best?.hour);
+
   return (
     <div className={"mapbox " + (ready ? "ready" : "")}>
-      <div ref={el} className="mapgl" />
-      <div className="map-overlay">
-        <div className="pin pu" style={at(pins.pu)}><span>{p.puLabel}</span></div>
-        <div className="pin do" style={at(pins.do)}><span>{p.doLabel}</span></div>
-        {pillText && (
-          <div className="price-pill" style={at(pins.mid)}>
-            <span style={{ background: pillColor, boxShadow: `0 0 0 4px ${pillColor}2e, 0 0 36px ${pillColor}88, 0 8px 24px rgba(0,0,0,.6)` }}>
-              {pillText}{cur && <small>{hl(cur.hour)}{cur.wait_s != null ? ` / ${mmss(cur.wait_s)} wait` : ""}</small>}
-            </span>
-          </div>
-        )}
+      <div className="mapview">
+        <div ref={el} className="mapgl" />
+        <div className="map-overlay">
+          <div className="pin pu" style={at(pins.pu)}><span>{p.puLabel}</span></div>
+          <div className="pin do" style={at(pins.do)}><span>{p.doLabel}</span></div>
+          {pillText && (
+            <div className="price-pill" style={at(pins.mid)}>
+              <span>{pillText}{cur && <small>{hl(cur.hour)}{cur.wait_s != null ? ` / ${mmss(cur.wait_s)} wait` : ""}</small>}</span>
+            </div>
+          )}
+        </div>
+        {err && <div className="map-err">{err}</div>}
       </div>
-      {err && <div className="map-err">{err}</div>}
       <div className="scrub">
-        <div className="scrub-row">
-          <div className="days">
-            {DAYS.map((d, i) => <button key={d} className={i === dow ? "on" : ""} onClick={() => { setDow(i); setPlaying(false); }}>{d}</button>)}
+        <div className="scrub-row top">
+          <div className="days" role="tablist">
+            {DAYS.map((d, i) => <button key={d} role="tab" aria-selected={i === dow} className={i === dow ? "on" : ""} onClick={() => { setDow(i); setPlaying(false); }}>{d}</button>)}
           </div>
           <button className={"range-t " + (full ? "on" : "")} onClick={() => setFull(!full)} title="Show all 24 hours">24h</button>
+          {rows.length > 0 && (
+            <div className="scrub-read">
+              <span className="h">{cur ? hl(cur.hour) : ""}</span>
+              <span className="v">{cur ? `$${cur.mid.toFixed(2)}` : ""}</span>
+              <span className="r">{cur ? `$${cur.low.toFixed(0)}-${cur.high.toFixed(0)}` : ""}</span>
+            </div>
+          )}
         </div>
         {rows.length > 0 ? (
           <div className="scrub-row">
@@ -330,24 +344,24 @@ export function RouteMapView(p: { puIds: number[]; doIds: number[]; puLabel: str
               if (!playing && hour === rows[rows.length - 1].hour) setHour(rows[0].hour);
               setPlaying(!playing);
             }}>{playing ? "\u275a\u275a" : "\u25b6"}</button>
-            <div className="slider">
+            <div className="slider" role="slider" tabIndex={0} aria-label="hour of departure" aria-valuemin={rows[0].hour} aria-valuemax={rows[rows.length - 1].hour}
+              aria-valuenow={cur?.hour} aria-valuetext={cur ? hl(cur.hour) : undefined}
+              onKeyDown={(e) => { if (e.key === "ArrowRight") pick(curIdx + 1); else if (e.key === "ArrowLeft") pick(curIdx - 1); }}
+              onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); fromX(e); }}
+              onPointerMove={(e) => { if (e.buttons) fromX(e); }}>
               <div className="bars">
-                {rows.map((r) => (
-                  <i key={r.hour} className={r.hour === cur?.hour ? "cur" : ""} title={`${hl(r.hour)} $${r.mid.toFixed(2)}`}
-                    style={{ height: `${25 + 75 * tNorm(r.mid)}%`, background: priceColor(tNorm(r.mid)) }} onClick={() => { setHour(r.hour); setPlaying(false); }} />
+                {rows.map((r, i) => (
+                  <i key={r.hour} className={(i === curIdx ? "cur " : "") + (i === bestIdx ? "best" : "")} title={`${hl(r.hour)} $${r.mid.toFixed(2)}`}
+                    style={{ height: `${18 + 82 * tNorm(r.mid)}%`, background: priceColor(tNorm(r.mid)) }}>
+                    {i === bestIdx && <sup>best</sup>}
+                  </i>
                 ))}
               </div>
-              <input type="range" min={rows[0].hour} max={rows[rows.length - 1].hour} step={1} value={cur?.hour ?? rows[0].hour}
-                onChange={(e) => { setHour(Number(e.target.value)); setPlaying(false); }} aria-label="hour of departure" />
-              {best && (
-                <div className="best" style={{ left: `${((best.hour - rows[0].hour) / Math.max(1, rows[rows.length - 1].hour - rows[0].hour)) * 100}%` }}>
-                  best {hl(best.hour)}
-                </div>
-              )}
-            </div>
-            <div className="scrub-read">
-              <b style={{ color: pillColor }}>{cur ? hl(cur.hour) : ""}</b>
-              <span>{cur ? `$${cur.low.toFixed(0)} to $${cur.high.toFixed(0)}` : ""}</span>
+              <div className="ruler">
+                {rows.map((r, i) => (
+                  <span key={r.hour} className={(r.hour % 3 === 0 ? "major " : "") + (i === curIdx ? "cur" : "")}>{r.hour % 3 === 0 ? hl(r.hour) : ""}</span>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
@@ -395,18 +409,19 @@ export function ChoroplethView({ origin, zones }: { origin?: Origin | null; zone
       const mid = (lo + hi) / 2;
       m.addSource("reach", { type: "geojson", data: fc(reach) });
       m.addSource("pts", { type: "geojson", data: fc(zones.map((z, i) => ({ ...point([z.lon, z.lat]), properties: { p50: z.p50_total ?? lo, idx: i } }))) });
-      const ramp = ["interpolate", ["linear"], ["get", "p50"], lo, "#3fcf8e", mid, TAXI, hi === lo ? hi + 1 : hi, "#ff5a4e"] as never;
+      const ramp = ["interpolate", ["linear"], ["get", "p50"], lo, CYAN, hi === lo ? hi + 1 : hi, TAXI] as never;
+      void mid;
       m.addLayer({ id: "reach-fill", type: "fill", source: "reach", paint: { "fill-color": ramp, "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.85, 0.5] as never, "fill-opacity-transition": { duration: 200 } } });
       m.addLayer({ id: "reach-line", type: "line", source: "reach", paint: { "line-color": ramp, "line-width": 1, "line-opacity": 0.9 } });
       m.addLayer({ id: "pts", type: "circle", source: "pts", paint: { "circle-radius": 2.5, "circle-color": "#fff", "circle-opacity": 0.7 } });
       if (of || origin) {
         m.addSource("origin", { type: "geojson", data: fc(of ? [of] : []) });
         m.addSource("origin-pt", { type: "geojson", data: fc(origin ? [point(of ? centroidOf([of])! : [origin.lon, origin.lat])] : []) });
-        m.addLayer({ id: "origin-fill", type: "fill", source: "origin", paint: { "fill-color": CYAN, "fill-opacity": 0.35 } });
-        m.addLayer({ id: "origin-glow", type: "line", source: "origin", paint: { "line-color": CYAN, "line-width": 10, "line-blur": 8, "line-opacity": 0.7 } });
-        m.addLayer({ id: "origin-line", type: "line", source: "origin", paint: { "line-color": CYAN, "line-width": 2 } });
-        m.addLayer({ id: "origin-pulse", type: "circle", source: "origin-pt", paint: { "circle-radius": 10, "circle-color": CYAN, "circle-opacity": 0.5, "circle-blur": 0.4 } });
-        m.addLayer({ id: "origin-dot", type: "circle", source: "origin-pt", paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": CYAN, "circle-stroke-width": 2 } });
+        m.addLayer({ id: "origin-fill", type: "fill", source: "origin", paint: { "fill-color": "#ffffff", "fill-opacity": 0.12 } });
+        m.addLayer({ id: "origin-glow", type: "line", source: "origin", paint: { "line-color": "#ffffff", "line-width": 10, "line-blur": 8, "line-opacity": 0.7 } });
+        m.addLayer({ id: "origin-line", type: "line", source: "origin", paint: { "line-color": "#ffffff", "line-width": 2 } });
+        m.addLayer({ id: "origin-pulse", type: "circle", source: "origin-pt", paint: { "circle-radius": 10, "circle-color": "#ffffff", "circle-opacity": 0.5, "circle-blur": 0.4 } });
+        m.addLayer({ id: "origin-dot", type: "circle", source: "origin-pt", paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": "#111111", "circle-stroke-width": 2 } });
         const t0 = performance.now();
         const tick = (now: number) => {
           const t = ((now - t0) % 1800) / 1800;
@@ -446,15 +461,17 @@ export function ChoroplethView({ origin, zones }: { origin?: Origin | null; zone
   const s = origin && map.current ? map.current.project([origin.lon, origin.lat]) : null;
   return (
     <div className={"mapbox " + (ready ? "ready" : "")}>
+      <div className="mapview">
       <div ref={el} className="mapgl" />
       <div className="map-overlay">
-        {s && origin && <div className="pin pu" style={{ transform: `translate(${s.x}px, ${s.y}px)` }}><span>{origin.zone}</span></div>}
+        {s && origin && <div className="pin origin" style={{ transform: `translate(${s.x}px, ${s.y}px)` }}><span>{origin.zone}</span></div>}
         {hover && (
           <div className="map-tip" style={{ transform: `translate(${hover.x + 14}px, ${hover.y - 10}px)` }}>
             <b>{hover.z.zone}</b>
             <div>{hover.z.p50_total != null ? `$${hover.z.p50_total.toFixed(2)} median` : ""}{hover.z.n != null ? ` / ${hover.z.n} trips` : ""}</div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

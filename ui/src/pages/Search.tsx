@@ -5,10 +5,13 @@ import { API, library, searchPrompt } from "../lib/library";
 import { mockStream, type Ev } from "../lib/mock";
 
 const EXAMPLES = [
+  "How much is a ride from Times Square to Williamsburg tonight?",
   "When should I leave JFK for Williamsburg on Friday to save money?",
-  "Cheapest time to get from JFK to Williamsburg on Friday",
+  "I wanna get from midtown to uptown",
+  "From 350 5th Ave to Columbia University, how much right now?",
+  "Cheapest time to get to JFK from the Upper East Side tomorrow morning",
   "I have $25, where can I go from Astoria?",
-  "Is Lyft cheaper than Uber from LaGuardia?",
+  "Is Lyft cheaper than Uber from LaGuardia to Manhattan?",
   "Do drivers get screwed on airport runs?",
 ];
 
@@ -160,7 +163,7 @@ export default function Search() {
     if (!query || busy) return;
     setQ("");
     const id = Date.now();
-    setTurns((ts) => [{ id, q: query, deep, status: [], stmts: {}, live: true, start: performance.now() }, ...ts]);
+    setTurns([{ id, q: query, deep, status: [], stmts: {}, live: true, start: performance.now() }]); // a new question replaces the old answer
     try {
       for await (const ev of mock ? mockStream() : sse(query, prompt, deep)) {
         if (ev.kind === "status") patch(id, (t) => ({ ...t, status: [...t.status, { text: ev.text }] }));
@@ -201,7 +204,10 @@ export default function Search() {
         <button className="go" disabled={busy || !q.trim()}>{busy ? "..." : "Ask"}</button>
       </form>
       <div className="chips">
-        {EXAMPLES.map((x) => <button key={x} className="chip" disabled={busy} onClick={() => run(x)}>{x}</button>)}
+        <span className="chips-k">try</span>
+        {EXAMPLES.map((x, i) => (
+          <span key={x}>{i > 0 && <span className="sep"> / </span>}<button className="chip" disabled={busy} onClick={() => run(x)}>{x}</button></span>
+        ))}
       </div>
 
       <div className="thread">

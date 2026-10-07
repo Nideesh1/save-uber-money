@@ -10,7 +10,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentglow"
-version = "0.4.8"
+version = "0.4.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -20,9 +20,9 @@ dependencies = [
     { name = "protobuf" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/10/aca4df4ca222c0d343e14075f163cf055c743443098d1e2a84ccc0f345cf/agentglow-0.4.8.tar.gz", hash = "sha256:d7acef4ede85b1e06e66b04b191dcb8c9d76299784c26eacefc1a6abe5ff7321", size = 763116, upload-time = "2026-10-06T04:59:21.651Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/0e/7c5b636f30272003bbfcacbb9cd56eec9a5c6f843c1e0d2bfc76e51a4f79/agentglow-0.4.9.tar.gz", hash = "sha256:2f631009419aef8a12d824912c3ff8598672fa87113867f8e40bbc8c31b7ee4c", size = 767940, upload-time = "2026-10-07T23:12:47.48Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/0b/8ac440d1f8ce389e5f0e9aea917db1d425559c7dba3dafb3872b2eade343/agentglow-0.4.8-py3-none-any.whl", hash = "sha256:aa2d3dafc70517224a0890f0fb6ec1056bd81a37aea58f9ac6644c383b6dc0f6", size = 781722, upload-time = "2026-10-06T04:59:19.741Z" },
+    { url = "https://files.pythonhosted.org/packages/94/68/8c15f343abb9cadf36aebed2e2a049a9672a58bd90b06e34edca911b006d/agentglow-0.4.9-py3-none-any.whl", hash = "sha256:ea4e2de16a5279a180046acb386adf60118800fa74897949a283c8c88758c03d", size = 788130, upload-time = "2026-10-07T23:12:45.888Z" },
 ]
 
 [package.optional-dependencies]

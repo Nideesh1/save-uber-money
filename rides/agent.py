@@ -63,6 +63,10 @@ Streaming layout (REQUIRED): line 1 is `root = Stack([headline, map, ...])` usin
 each referenced component on its OWN line in the same order (`headline = AnswerHeadline(...)`, `map = RouteMap(...)`).
 Never nest component calls inline inside root: each line renders on screen the moment it is written.
 
+Consistency (REQUIRED): every "best/cheapest hour" and "save $X" claim comes ONLY from best_time_to_travel's `best`
+and `savings_usd` (the model's prediction). Never name a cheapest hour from fare_by_hour; describe fare_by_hour only
+as historical context ("historically ..."). The headline, TravelWindow and RouteMap must name the same hour and amount.
+
 3. Money first: start with an AnswerHeadline whose value is in US dollars (the cheapest / predicted / median price),
    unit "$", a short label and a one-sentence summary that names the hour and the saving when relevant.
    For EVERY trip/route answer, put RouteMap(title, pu_zone_ids, do_zone_ids, pu_label, do_label, price_label) right

@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@openuidev/react-lang": "^0.3.0",
-    "agentglow": "^0.4.8",
+    "agentglow": "^0.4.9",
     "maplibre-gl": "^6.13.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -22,7 +22,7 @@ import { hourLabel } from "./config";
 const Card = ({ tag, right, children, className = "" }: { tag?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) => (
   <section className={"card " + className}>
     {(tag || right) && (
-      <div className="card-tag"><span>{tag}</span>{right != null && <span>{right}</span>}</div>
+      <div className="card-tag"><span>{tag}</span><i className="rule" />{right != null && <span>{right}</span>}</div>
     )}
     {children}
   </section>
@@ -237,7 +237,7 @@ const ZoneMap = defineComponent({
         <h3>{props.title}</h3>
         <ChoroplethView origin={props.origin} zones={zs} />
         <div className="legend">
-          <span className="ramp" />{usd(fares.length ? Math.min(...fares) : null)} to {usd(fares.length ? Math.max(...fares) : null)} median total<span className="sw pu-sw" />origin
+          <span className="ramp" />{usd(fares.length ? Math.min(...fares) : null)} to {usd(fares.length ? Math.max(...fares) : null)} median total<span className="sw origin-sw" />origin
         </div>
       </Card>
     );
@@ -360,7 +360,7 @@ const TravelWindow = defineComponent({
   name: "TravelWindow",
   description:
     "Predicted price by departure hour for one trip (ML model): low-high band with mid line, best hour marked, headline 'leave at X, save $Y'. " +
-    "Pass hours, best.hour and savings_usd from best_time_to_travel. Use for 'when should I leave / travel' questions.",
+    "Pass hours, best.hour and savings_usd from best_time_to_travel (the UI re-derives best hour and savings from hours, 6am-11pm). Use for 'when should I leave / travel' questions.",
   props: z.object({
     title: z.string(),
     hours: z.array(WinRow),
@@ -368,16 +368,20 @@ const TravelWindow = defineComponent({
     savings_usd: z.number().nullable().optional(),
   }),
   component: ({ props }) => {
-    const data = useMemo(
-      () => arr(props.hours).filter((h) => num(h.mid) != null).sort((a, b) => a.hour - b.hour).map((h) => ({ ...h, band: [h.low, h.high] })),
-      [props.hours],
-    );
-    const best = data.find((d) => d.hour === props.best_hour);
+    // Same window as the RouteMap scrubber (6am-11pm) so the two can never disagree; best + savings derived from the data.
+    const data = useMemo(() => {
+      const all = arr(props.hours).filter((h) => num(h.mid) != null).sort((a, b) => a.hour - b.hour);
+      const day = all.filter((h) => h.hour >= 6 && h.hour <= 23);
+      return (day.length >= 3 ? day : all).map((h) => ({ ...h, band: [h.low, h.high] }));
+    }, [props.hours]);
+    const best = data.length ? data.reduce((a, b) => (b.mid < a.mid ? b : a)) : undefined;
+    const savings = data.length ? Math.max(...data.map((d) => d.mid)) - (best?.mid ?? 0) : props.savings_usd ?? null;
+    const bestHour = best?.hour ?? props.best_hour;
     return (
       <Card className="wide" tag="when to leave" right={<span className="badge">ML model</span>}>
         <div className="window-hd">
-          leave at <span className="accent">{hourLabel(props.best_hour ?? 0)}</span>
-          {props.savings_usd != null && props.savings_usd > 0 && <>, save <span className="go">{usd(props.savings_usd)}</span></>}
+          leave at <span className="accent">{hourLabel(bestHour ?? 0)}</span>
+          {savings != null && savings > 0 && <>, save <span className="go">{usd(savings)}</span></>}
         </div>
         <h3>{props.title}</h3>
         <div className="chart">
