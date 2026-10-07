@@ -1,0 +1,148 @@
+# nyc-rides backend stack:  docker compose up -d --build
+#
+#   AgentGlow    http://localhost:8103
+#   Hatchet      http://localhost:8288   (admin@example.com / Admin123!!)   gRPC 127.0.0.1:7278
+#   API          http://localhost:8420   (UI: cd ui && npm run dev -> :5420)
+#
+# The Hatchet client token is minted once into ./data/hatchet/token (bind mount), so host processes
+# (`uv run python -m rides.worker`, `uv run python -m rides.api`) pick it up through rides.config as well.
+# Secrets come from .env (ELASTIC_ENDPOINT, ELASTIC_API_KEY, MISTRAL_API_KEY) and are never baked into the image.
+name: nyc-rides
+
+x-app: &app
+  image: nyc-rides-app:local
+  build: {context: ., dockerfile: Dockerfile}
+  restart: unless-stopped
+  env_file: [.env]
+  volumes:
+    - ./data:/app/data
+    - ./models:/app/models
+  environment: &app-env
+    AGENTGLOW_URL: http://agentglow:8103
+    HATCHET_CLIENT_TOKEN_FILE: /app/data/hatchet/token
+    HATCHET_CLIENT_HOST_PORT: hatchet-engine:7070
+    HATCHET_CLIENT_SERVER_URL: http://hatchet-dashboard:80
+    HATCHET_CLIENT_TLS_STRATEGY: none
+    HATCHET_CLIENT_NAMESPACE: nycrides
+
+x-tcp-health: &tcp-health
+  interval: 10s
+  timeout: 5s
+  retries: 30
+  start_period: 20s
+
+services:
+  # ------------------------------------------------------------------ Hatchet
+  postgres:
+    image: postgres:15.6
+    command: postgres -c max_connections=300
+    environment: {POSTGRES_USER: hatchet, POSTGRES_PASSWORD: hatchet, POSTGRES_DB: hatchet}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d hatchet -U hatchet"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  hatchet-migrate:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-migrate:latest
+    command: /hatchet/hatchet-migrate
+    environment:
+      DATABASE_URL: postgres://hatchet:hatchet@postgres:5432/hatchet
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  hatchet-config:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:latest
+    command: /hatchet/hatchet-admin quickstart --skip certs --generated-config-dir /hatchet/config --overwrite=false
+    environment:
+      DATABASE_URL: postgres://hatchet:hatchet@postgres:5432/hatchet
+      SERVER_MSGQUEUE_KIND: postgres
+      SERVER_AUTH_COOKIE_DOMAIN: localhost:8288
+      SERVER_AUTH_COOKIE_INSECURE: "t"
+      SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+      SERVER_GRPC_INSECURE: "t"
+      SERVER_GRPC_BROADCAST_ADDRESS: localhost:7278
+      SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: hatchet-engine:7070
+    volumes: [hatchet_certs:/hatchet/certs, hatchet_config:/hatchet/config]
+    depends_on:
+      hatchet-migrate: {condition: service_completed_successfully}
+
+  hatchet-engine:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-engine:latest
+    command: /hatchet/hatchet-engine --config /hatchet/config
+    restart: unless-stopped
+    ports: ["127.0.0.1:7278:7070"]
+    environment:
+      DATABASE_URL: postgres://hatchet:hatchet@postgres:5432/hatchet
+      SERVER_MSGQUEUE_KIND: postgres
+      SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+      SERVER_GRPC_INSECURE: "t"
+    volumes: [hatchet_certs:/hatchet/certs, hatchet_config:/hatchet/config]
+    depends_on:
+      hatchet-config: {condition: service_completed_successfully}
+
+  hatchet-dashboard:   # Hatchet UI + REST API: http://localhost:8288 (admin@example.com / Admin123!!)
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-dashboard:latest
+    command: sh ./entrypoint.sh --config /hatchet/config
+    restart: unless-stopped
+    ports: ["127.0.0.1:8288:80"]
+    environment:
+      DATABASE_URL: postgres://hatchet:hatchet@postgres:5432/hatchet
+    volumes: [hatchet_certs:/hatchet/certs, hatchet_config:/hatchet/config]
+    depends_on:
+      hatchet-config: {condition: service_completed_successfully}
+
+  hatchet-token:   # mints a client token once into ./data/hatchet/token
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:latest
+    entrypoint: >
+      /bin/sh -c "
+      if [ -s /hatchet-token/token ]; then echo 'hatchet token present'; exit 0; fi;
+      /hatchet/hatchet-admin token create --config /hatchet/config --name nyc-rides --expiresIn 87600h > /hatchet-token/token.tmp
+      && mv /hatchet-token/token.tmp /hatchet-token/token && chmod 644 /hatchet-token/token && echo 'hatchet token written';
+      "
+    environment:
+      DATABASE_URL: postgres://hatchet:hatchet@postgres:5432/hatchet
+      SERVER_MSGQUEUE_KIND: postgres
+    volumes: [hatchet_certs:/hatchet/certs, hatchet_config:/hatchet/config, ./data/hatchet:/hatchet-token]
+    depends_on:
+      hatchet-config: {condition: service_completed_successfully}
+
+  # ------------------------------------------------------------------ AgentGlow (3D live view of the backend)
+  agentglow:
+    <<: *app
+    command: ["agentglow", "serve", "--host", "0.0.0.0", "--port", "8103"]
+    ports: ["8103:8103"]
+    healthcheck:
+      <<: *tcp-health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8103/live/health', timeout=4)"]
+
+  # ------------------------------------------------------------------ app
+  worker:       # Hatchet worker: search + ingest
+    <<: *app
+    command: ["python", "-m", "rides.worker"]
+    depends_on:
+      hatchet-token: {condition: service_completed_successfully}
+      hatchet-engine: {condition: service_started}
+      agentglow: {condition: service_started}
+
+  api:          # FastAPI :8420 (SSE search, ingest trigger)
+    <<: *app
+    command: ["uvicorn", "rides.api:app", "--host", "0.0.0.0", "--port", "8420"]
+    ports: ["8420:8420"]
+    environment:
+      <<: *app-env
+      SEARCH_INLINE: ${SEARCH_INLINE:-0}
+    depends_on:
+      hatchet-token: {condition: service_completed_successfully}
+      hatchet-dashboard: {condition: service_started}
+      agentglow: {condition: service_started}
+    healthcheck:
+      <<: *tcp-health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8420/api/health', timeout=4)"]
+
+volumes:
+  pgdata:
+  hatchet_config:
+  hatchet_certs:

@@ -1,0 +1,20 @@
+[project]
+name = "nyc-rides"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "agentglow[fastapi,hatchet,langchain]>=0.4.7",
+    "deepagents>=0.7.23",
+    "duckdb>=1.5.6",
+    "elasticsearch>=9",
+    "fastapi>=0.142.4",
+    "hatchet-sdk[otel]>=1.41.1",
+    "httpx>=0.28.1",
+    "langchain>=1.4.3",
+    "langchain-mistralai>=1.1.6",
+    "lightgbm>=4.7.0",
+    "pyproj>=3.7.2",
+    "pyshp>=3.1.6",
+    "python-dotenv>=1.2.4",
+    "uvicorn>=0.54.0",
+]

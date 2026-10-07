@@ -1,0 +1,52 @@
+{
+  "trained_at": "2026-10-07T22:42:24+00:00",
+  "trained_on": "TLC HVFHV 2026-08 (Uber+Lyft, cleaned)",
+  "train_rows": 16724964,
+  "holdout_rows": 2580073,
+  "holdout": "request date 2026-08-28..2026-08-31",
+  "features": [
+    "pu_lat",
+    "pu_lon",
+    "do_lat",
+    "do_lon",
+    "km",
+    "pu_borough",
+    "do_borough",
+    "airport",
+    "hour",
+    "dow",
+    "company"
+  ],
+  "categorical": [
+    "pu_borough",
+    "do_borough",
+    "company"
+  ],
+  "boroughs": [
+    "Manhattan",
+    "Brooklyn",
+    "Queens",
+    "Bronx",
+    "Staten Island",
+    "EWR",
+    "Unknown"
+  ],
+  "companies": [
+    "Uber",
+    "Lyft"
+  ],
+  "num_boost_round": 400,
+  "metrics": {
+    "mae_usd": 6.004,
+    "mape_p50": 0.1698,
+    "pinball": {
+      "p10": 1.1048,
+      "p50": 3.0018,
+      "p90": 1.7961
+    },
+    "coverage_80": 0.7891,
+    "wait_mae_s": 136.6,
+    "baseline_mae_usd": 15.548
+  },
+  "train_seconds": 796.7
+}

@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+data/
+node_modules/
+dist/
+*.parquet
+models_2m_backup/
+docker-compose.override.yml
+.scratch/
+*.log
+.DS_Store
+ui/.vite/
+*.tsbuildinfo
