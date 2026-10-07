@@ -3,6 +3,7 @@ import { Map as MLMap, setWorkerUrl } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { setPick } from "./scrub";
 import { API, hourLabel as hl } from "./config";
 
 setWorkerUrl(workerUrl);
@@ -185,6 +186,11 @@ export function RouteMapView(p: { puIds: number[]; doIds: number[]; puLabel: str
   const tNorm = (v: number) => (hi === lo ? 0.5 : (v - lo) / (hi - lo));
   const curT = cur ? tNorm(cur.mid) : null;
   useEffect(() => { if (hour == null || !rows.some((r) => r.hour === hour)) setHour(best?.hour ?? null); }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const curHour = cur?.hour ?? null;
+  useEffect(() => { // the FareQuote card follows the scrubber (lib/scrub.ts)
+    if (curHour != null) setPick({ puIds: p.puIds, doIds: p.doIds, hour: curHour, dow });
+  }, [curHour, dow, p.puIds.join(","), p.doIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setPick(null), []);
   useEffect(() => {
     if (!playing || !rows.length) return;
     const id = setInterval(() => {

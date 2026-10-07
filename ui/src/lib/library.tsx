@@ -18,6 +18,7 @@ export const mins = (s: number | null | undefined) =>
   s == null ? "-" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
 export { hourLabel } from "./config";
 import { hourLabel } from "./config";
+import { usePick, usePrediction } from "./scrub";
 
 const Card = ({ tag, right, children, className = "" }: { tag?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) => (
   <section className={"card " + className}>
@@ -294,6 +295,8 @@ const Quote = z.object({
 });
 const ModelMeta = z.object({ mae_usd: z.number().nullable().optional(), coverage_80: z.number().nullable().optional(), trained_on: z.any().optional() });
 
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 const FareQuote = defineComponent({
   name: "FareQuote",
   description:
@@ -308,7 +311,15 @@ const FareQuote = defineComponent({
     quotes: z.array(Quote).nullable().optional(),
     model: ModelMeta.nullable().optional(),
   }),
-  component: ({ props }) => {
+  component: ({ props: agent }) => {
+    // follows the map's hour scrubber: re-quoted by the fare model for the picked hour + day (GET /api/predict)
+    const pick = usePick();
+    const live = usePrediction(pick);
+    const props = live
+      ? { ...agent, low: live.low, mid: live.mid, high: live.high, wait_s: live.wait_s ?? agent.wait_s,
+          quotes: live.company_quotes ?? agent.quotes,
+          label: `${agent.label.split(",")[0]}, ${DAY_NAMES[pick!.dow]} ${hourLabel(pick!.hour)}` }
+      : agent;
     const qs = arr(props.quotes);
     const cheapest = qs.length > 1 ? Math.min(...qs.map((q) => q.mid ?? Infinity)) : null;
     const lo = props.low ?? 0, hi = props.high ?? 0, span = hi - lo || 1;

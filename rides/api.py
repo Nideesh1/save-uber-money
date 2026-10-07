@@ -195,6 +195,25 @@ async def api_quote(pu: str, do: str, dow: int):
         raise HTTPException(400, f"bad zone ids: {e}") from e
 
 
+@app.get("/api/predict")
+async def api_predict(pu: str, do: str, hour: int, dow: int):
+    """Price card follows the map scrubber: ML-only quote (with Uber / Lyft) for one hour and weekday (no LLM)."""
+    import agentglow
+
+    def run() -> dict:
+        import rides.ml as M
+
+        with agentglow.inference("lightgbm fare model", units=1, unit="predictions", group="fare model"):
+            return M.predict_fare(_ids(pu), _ids(do), hour, dow)
+
+    try:
+        return await asyncio.to_thread(run)
+    except ValueError as e:
+        from fastapi import HTTPException
+
+        raise HTTPException(400, f"bad zone ids: {e}") from e
+
+
 @app.get("/api/health")
 async def health():
     return {"ok": True, "mode": "inline" if cfg.SEARCH_INLINE else "hatchet", "model": cfg.MODEL}
